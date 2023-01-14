@@ -54,4 +54,33 @@ function ensrf(; E::AbstractMatrix{float_type}, R::AbstractMatrix{float_type},
     return E
 end
 
+function senkf(; E::AbstractMatrix{float_type}, R::AbstractMatrix{float_type},
+                 R_inv::AbstractMatrix{float_type},
+                 inflation::float_type=1.0, H,
+                 y::AbstractVector{float_type}, localization=nothing) where {float_type<:AbstractFloat}
+    D, m = size(E)
+    err_dist = MvNormal(R)
+    #y_ens = zeros(m, length(y))
+
+    errs = rand(err_dist, m)
+    y_ens = y .+ errs
+    R_u = cov(errs')
+
+    HE = hcat([H(E[:, i]) for i=1:m]...)
+    y_m = mean(HE, dims=2)
+    Y = HE .- y_m
+
+    x_m = mean(E, dims=2)
+    X = E .- x_m
+    PH = X*Y'/(m-1)
+    HPH = Y*Y'/(m-1)
+    K = PH*inv(HPH + R_u)
+
+    for i=1:m
+        E[:, i] = E[:, i] + K*(y_ens[:, i] - H(E[:, i]))
+    end
+
+    return E
+end
+
 end

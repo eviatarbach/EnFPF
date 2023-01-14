@@ -1,0 +1,3 @@
+[submodule "kscore"]
+	path = kscore
+	url = ./kscore

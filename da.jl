@@ -60,6 +60,7 @@ function make_observations(; ensemble, model_true::Function,
                              Δt::float_type, window::int_type, n_cycles::int_type, outfreq::int_type,
                              p::int_type, ens_size) where {float_type<:AbstractFloat, int_type<:Integer}
     trues = Array{float_type}(undef, n_cycles, p)
+    covariances = Array{Array{float_type}}(undef, n_cycles)
     observations = Array{float_type}(undef, n_cycles, size(R, 1))
     obs_err_dist = MvNormal(R)
 
@@ -70,16 +71,21 @@ function make_observations(; ensemble, model_true::Function,
         Threads.@threads for i=1:ens_size
             E[:, i] = integrator(model_true, E[:, i], t, t + window*outfreq*Δt, Δt)
         end
-        trues[cycle, :] = mean([H_true(E[:, i]) for i=1:ens_size])
+
+        HE = [H_true(E[:, i]) for i=1:ens_size]
+        trues[cycle, :] = mean(HE)
+        covariances[cycle] = cov(HE)
 
         y = trues[cycle, :] + rand(obs_err_dist)
 
         observations[cycle, :] = y
         ensemble = E
+
+        t += window*outfreq*Δt
         #x_true = integrator(model_true, x_true, t, t + window*outfreq*Δt, Δt)
     end
 
-    return trues, observations
+    return trues, observations, mean(covariances)
 end
 
 function da_cycles(; ensemble::AbstractMatrix{float_type},
@@ -88,10 +94,10 @@ function da_cycles(; ensemble::AbstractMatrix{float_type},
                      ens_size::int_type, Δt::float_type, window::int_type,
                      n_cycles::int_type, outfreq::int_type, model_size::int_type,
                      R::AbstractMatrix{float_type},
-                     ρ::float_type, assimilate_obs::Bool=true,
+                     assimilate_obs::Bool=true,
                      save_P_hist::Bool=false,
                      prev_analyses::Union{AbstractArray{float_type}, Nothing}=nothing,
-                     leads::int_type=1) where {float_type<:AbstractFloat, int_type<:Integer}
+                     leads::int_type=1, t0=0.0) where {float_type<:AbstractFloat, int_type<:Integer}
     R_inv = inv(R)
 
     if save_P_hist
@@ -103,7 +109,7 @@ function da_cycles(; ensemble::AbstractMatrix{float_type},
     forecasts = Array{float_type}(undef, n_cycles, model_size, ens_size)
     analyses = Array{float_type}(undef, n_cycles, model_size, ens_size)
 
-    t = 0.0
+    t = t0
 
     @showprogress for cycle=1:n_cycles
         y = observations[cycle, :]
