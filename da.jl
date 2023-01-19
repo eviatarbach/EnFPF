@@ -56,10 +56,11 @@ xskillscore = pyimport("xskillscore")
 xarray = pyimport("xarray")
 
 function make_observations(; ensemble, model_true::Function,
-                             H_true, integrator::Function, R::AbstractMatrix{float_type},
+                             H_true, H_hidden, integrator::Function, R::AbstractMatrix{float_type},
                              Δt::float_type, window::int_type, n_cycles::int_type, outfreq::int_type,
-                             p::int_type, ens_size) where {float_type<:AbstractFloat, int_type<:Integer}
+                             p::int_type, ens_size, p_hidden) where {float_type<:AbstractFloat, int_type<:Integer}
     trues = Array{float_type}(undef, n_cycles, p)
+    trues_hidden = Array{float_type}(undef, n_cycles, p_hidden)
     covariances = Array{Array{float_type}}(undef, n_cycles)
     observations = Array{float_type}(undef, n_cycles, size(R, 1))
     obs_err_dist = MvNormal(R)
@@ -73,7 +74,9 @@ function make_observations(; ensemble, model_true::Function,
         end
 
         HE = [H_true(E[:, i]) for i=1:ens_size]
+        HE_hidden = [H_hidden(E[:, i]) for i=1:ens_size]
         trues[cycle, :] = mean(HE)
+        trues_hidden[cycle, :] = mean(HE_hidden)
         covariances[cycle] = cov(HE)
 
         y = trues[cycle, :] + rand(obs_err_dist)
@@ -85,7 +88,7 @@ function make_observations(; ensemble, model_true::Function,
         #x_true = integrator(model_true, x_true, t, t + window*outfreq*Δt, Δt)
     end
 
-    return trues, observations, mean(covariances)
+    return trues, trues_hidden, observations, mean(covariances)
 end
 
 function da_cycles(; ensemble::AbstractMatrix{float_type},

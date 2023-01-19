@@ -4,7 +4,12 @@ export etkf, ensrf
 
 using Statistics
 using LinearAlgebra
+
 using Distributions
+using PyCall
+push!(pyimport("sys")."path", "kscore")
+kscore = pyimport("kscore")
+score_estimator = kscore.estimators.NuMethod(lam=0.1, kernel=kscore.kernels.CurlFreeIMQ())
 
 """
 Ensemble transform Kalman filter (ETKF)
@@ -12,7 +17,7 @@ Ensemble transform Kalman filter (ETKF)
 function etkf(; E::AbstractMatrix{float_type}, R::AbstractMatrix{float_type},
                 R_inv::AbstractMatrix{float_type},
                 inflation::float_type=1.0, H,
-                y::AbstractVector{float_type}, localization=nothing) where {float_type<:AbstractFloat}
+                y::AbstractVector{float_type}, localization=nothing, calc_score=true) where {float_type<:AbstractFloat}
     D, m = size(E)
 
     x_m = mean(E, dims=2)
@@ -25,7 +30,18 @@ function etkf(; E::AbstractMatrix{float_type}, R::AbstractMatrix{float_type},
     Ω = inv(Symmetric(I + Y'*R_inv*Y))
     w = Ω*Y'*R_inv*(y - y_m)
 
+    if calc_score
+        score_estimator.fit(Matrix{Float32}(E)')
+        score = score_estimator.compute_gradients(Matrix{Float32}(E)').numpy()'
+    end
+
+    K = X*Y'*inv(Y*Y' + R)
+
     E = x_m .+ X*(w .+ sqrt(m - 1)*sqrt(Ω))
+
+    if calc_score
+        E += 0.05*K*R*K'*score
+    end
 
     return E
 end
