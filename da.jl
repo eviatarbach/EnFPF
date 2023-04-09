@@ -56,11 +56,13 @@ xskillscore = pyimport("xskillscore")
 xarray = pyimport("xarray")
 
 function make_observations(; ensemble, model_true::Function,
-                             H_true, H_hidden, integrator::Function, R::AbstractMatrix{float_type},
+                             H_true, H_hidden=nothing, integrator::Function, R::AbstractMatrix{float_type},
                              Δt::float_type, window::int_type, n_cycles::int_type, outfreq::int_type,
-                             p::int_type, ens_size, p_hidden) where {float_type<:AbstractFloat, int_type<:Integer}
+                             p::int_type, ens_size, p_hidden=0) where {float_type<:AbstractFloat, int_type<:Integer}
     trues = Array{float_type}(undef, n_cycles, p)
-    trues_hidden = Array{float_type}(undef, n_cycles, p_hidden)
+    if p_hidden > 0
+        trues_hidden = Array{float_type}(undef, n_cycles, p_hidden)
+    end
     covariances = Array{Array{float_type}}(undef, n_cycles)
     observations = Array{float_type}(undef, n_cycles, size(R, 1))
     obs_err_dist = MvNormal(R)
@@ -74,9 +76,11 @@ function make_observations(; ensemble, model_true::Function,
         end
 
         HE = [H_true(E[:, i]) for i=1:ens_size]
-        HE_hidden = [H_hidden(E[:, i]) for i=1:ens_size]
         trues[cycle, :] = mean(HE)
-        trues_hidden[cycle, :] = mean(HE_hidden)
+        if p_hidden > 0
+            HE_hidden = [H_hidden(E[:, i]) for i=1:ens_size]
+            trues_hidden[cycle, :] = mean(HE_hidden)
+        end
         covariances[cycle] = cov(HE)
 
         y = trues[cycle, :] + rand(obs_err_dist)
@@ -88,11 +92,15 @@ function make_observations(; ensemble, model_true::Function,
         #x_true = integrator(model_true, x_true, t, t + window*outfreq*Δt, Δt)
     end
 
-    return trues, trues_hidden, observations, mean(covariances)
+    if p_hidden > 0
+        return trues, trues_hidden, observations, mean(covariances)
+    else
+        return trues, observations, mean(covariances)
+    end
 end
 
 function da_cycles(; ensemble::AbstractMatrix{float_type},
-                     model::Function, H, observations, integrator::Function,
+                     model::Function, H, H_linear=H_linear, observations, integrator::Function,
                      da_method::Function, localization,
                      ens_size::int_type, Δt::float_type, window::int_type,
                      n_cycles::int_type, outfreq::int_type, model_size::int_type,
@@ -100,7 +108,7 @@ function da_cycles(; ensemble::AbstractMatrix{float_type},
                      assimilate_obs::Bool=true,
                      save_P_hist::Bool=false,
                      prev_analyses::Union{AbstractArray{float_type}, Nothing}=nothing,
-                     leads::int_type=1, t0=0.0) where {float_type<:AbstractFloat, int_type<:Integer}
+                     leads::int_type=1, t0=0.0, calc_score=true) where {float_type<:AbstractFloat, int_type<:Integer}
     R_inv = inv(R)
 
     if save_P_hist
@@ -133,7 +141,7 @@ function da_cycles(; ensemble::AbstractMatrix{float_type},
         forecasts[cycle, :, :] = E
 
         if assimilate_obs & (mod(cycle, leads) == 0)
-            E_a = da_method(E=E, R=R, R_inv=R_inv, H=H, y=y, localization=localization)
+            E_a = da_method(E=E, R=R, R_inv=R_inv, H=H, H_linear=H_linear, y=y, localization=localization, calc_score=calc_score)
         else
             E_a = E
         end

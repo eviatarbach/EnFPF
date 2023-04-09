@@ -9,7 +9,7 @@ using Distributions
 using PyCall
 push!(pyimport("sys")."path", "kscore")
 kscore = pyimport("kscore")
-score_estimator = kscore.estimators.NuMethod(lam=0.1, kernel=kscore.kernels.CurlFreeIMQ())
+score_estimator = kscore.estimators.NuMethod(lam=1.0, kernel=kscore.kernels.CurlFreeIMQ())
 
 """
 Ensemble transform Kalman filter (ETKF)
@@ -48,12 +48,13 @@ end
 
 function ensrf(; E::AbstractMatrix{float_type}, R::AbstractMatrix{float_type},
                  R_inv::AbstractMatrix{float_type},
-                 inflation::float_type=1.0, H,
+                 inflation::float_type=1.0, H, H_linear,
                  y::AbstractVector{float_type},
-                 localization=nothing) where {float_type<:AbstractFloat}
+                 localization=nothing, calc_score=true) where {float_type<:AbstractFloat}
     D, m = size(E)
 
     x_m = mean(E, dims=2)
+    H_l = H_linear(x_m)
     A = E .- x_m
 
     if localization === nothing
@@ -62,10 +63,19 @@ function ensrf(; E::AbstractMatrix{float_type}, R::AbstractMatrix{float_type},
         P = inflation*localization.*(A*A')/(m - 1)
     end
 
-    K = P*H'*inv(H*P*H' + R)
-    x_m .+= K*(y - H*x_m)
+    K = P*H_l'*inv(H_l*P*H_l' + R)
+    x_m .+= K*(y - H_l*x_m)
 
-    E = x_m .+ real((I + P*H'*R_inv*H)^(-1/2))*A
+    if calc_score
+        score_estimator.fit(Matrix{Float32}(E)')
+        score = score_estimator.compute_gradients(Matrix{Float32}(E)').numpy()'
+    end
+
+    E = x_m .+ real((I + P*H_l'*R_inv*H_l)^(-1/2))*A
+
+    if calc_score
+        E += 0.05*K*R*K'*score
+    end
 
     return E
 end
@@ -88,8 +98,8 @@ function senkf(; E::AbstractMatrix{float_type}, R::AbstractMatrix{float_type},
 
     x_m = mean(E, dims=2)
     X = E .- x_m
-    PH = X*Y'/(m-1)
-    HPH = Y*Y'/(m-1)
+    PH = (localization.*(X*Y'))/(m-1)
+    HPH = (localization.*(Y*Y'))/(m-1)
     K = PH*inv(HPH + R_u)
 
     for i=1:m
