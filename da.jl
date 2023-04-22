@@ -100,7 +100,7 @@ function make_observations(; ensemble, model_true::Function,
 end
 
 function da_cycles(; ensemble::AbstractMatrix{float_type},
-                     model::Function, H, H_linear=H_linear, observations, integrator::Function,
+                     model::Function, H, H_linear=nothing, observations, integrator::Function,
                      da_method::Function, localization,
                      ens_size::int_type, Δt::float_type, window::int_type,
                      n_cycles::int_type, outfreq::int_type, model_size::int_type,
@@ -141,7 +141,10 @@ function da_cycles(; ensemble::AbstractMatrix{float_type},
         forecasts[cycle, :, :] = E
 
         if assimilate_obs & (mod(cycle, leads) == 0)
-            E_a = da_method(E=E, R=R, R_inv=R_inv, H=H, H_linear=H_linear, y=y, localization=localization, calc_score=calc_score)
+            E_a = E
+            for i=1:1
+                E_a = da_method(E=E_a, R=R, R_inv=R_inv, H=H, H_linear=H_linear, y=y, localization=localization, calc_score=calc_score, Δt=Δt)
+            end
         else
             E_a = E
         end

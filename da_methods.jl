@@ -9,7 +9,7 @@ using Distributions
 using PyCall
 push!(pyimport("sys")."path", "kscore")
 kscore = pyimport("kscore")
-score_estimator = kscore.estimators.NuMethod(lam=1.0, kernel=kscore.kernels.CurlFreeIMQ())
+score_estimator = kscore.estimators.NuMethod(lam=0.1, kernel=kscore.kernels.CurlFreeIMQ())
 
 """
 Ensemble transform Kalman filter (ETKF)
@@ -17,13 +17,18 @@ Ensemble transform Kalman filter (ETKF)
 function etkf(; E::AbstractMatrix{float_type}, R::AbstractMatrix{float_type},
                 R_inv::AbstractMatrix{float_type},
                 inflation::float_type=1.0, H,
-                y::AbstractVector{float_type}, localization=nothing, calc_score=true) where {float_type<:AbstractFloat}
+                y::AbstractVector{float_type}, localization=nothing, calc_score=true, H_linear=nothing, Δt) where {float_type<:AbstractFloat}
+    keep_size = true
     D, m = size(E)
 
-    x_m = mean(E, dims=2)
+    x_m = mean(E, dims=2)    
     X = (E .- x_m)/sqrt(m - 1)
 
     X = sqrt(inflation)*X
+    X_old = X
+
+    #HE = hcat([H2(E[:, i]) for i=1:m]...)
+    #y_m = mean(HE, dims=2)
 
     y_m = H(x_m)
     Y = (hcat([H(E[:, i]) for i=1:m]...) .- y_m)/sqrt(m - 1)
@@ -39,8 +44,16 @@ function etkf(; E::AbstractMatrix{float_type}, R::AbstractMatrix{float_type},
 
     E = x_m .+ X*(w .+ sqrt(m - 1)*sqrt(Ω))
 
+    if keep_size
+        x_m = mean(E, dims=2)
+
+        X = (E .- x_m)/sqrt(m - 1)
+
+        E = x_m .+ sqrt(tr(X_old*X_old')/tr(X*X'))*X*sqrt(m-1)
+    end
+
     if calc_score
-        E += 0.05*K*R*K'*score
+        E += Δt*K*R*K'*score
     end
 
     return E
@@ -50,7 +63,7 @@ function ensrf(; E::AbstractMatrix{float_type}, R::AbstractMatrix{float_type},
                  R_inv::AbstractMatrix{float_type},
                  inflation::float_type=1.0, H, H_linear,
                  y::AbstractVector{float_type},
-                 localization=nothing, calc_score=true) where {float_type<:AbstractFloat}
+                 localization=nothing, calc_score=true, Δt) where {float_type<:AbstractFloat}
     D, m = size(E)
 
     x_m = mean(E, dims=2)
@@ -74,7 +87,7 @@ function ensrf(; E::AbstractMatrix{float_type}, R::AbstractMatrix{float_type},
     E = x_m .+ real((I + P*H_l'*R_inv*H_l)^(-1/2))*A
 
     if calc_score
-        E += 0.05*K*R*K'*score
+        E += Δt*K*R*K'*score
     end
 
     return E
@@ -86,9 +99,9 @@ function senkf(; E::AbstractMatrix{float_type}, R::AbstractMatrix{float_type},
                  y::AbstractVector{float_type}, localization=nothing) where {float_type<:AbstractFloat}
     D, m = size(E)
     err_dist = MvNormal(R)
-    #y_ens = zeros(m, length(y))
 
     errs = rand(err_dist, m)
+    errs .-= mean(errs, dims=2)
     y_ens = y .+ errs
     R_u = cov(errs')
 
@@ -98,8 +111,8 @@ function senkf(; E::AbstractMatrix{float_type}, R::AbstractMatrix{float_type},
 
     x_m = mean(E, dims=2)
     X = E .- x_m
-    PH = (localization.*(X*Y'))/(m-1)
-    HPH = (localization.*(Y*Y'))/(m-1)
+    PH = (X*Y')/(m-1)
+    HPH = (Y*Y')/(m-1)
     K = PH*inv(HPH + R_u)
 
     for i=1:m
