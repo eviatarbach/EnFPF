@@ -49,7 +49,9 @@ function etkf(; E::AbstractMatrix{float_type}, R::AbstractMatrix{float_type},
 
         X = (E .- x_m)/sqrt(m - 1)
 
-        E = x_m .+ sqrt(tr(X_old*X_old')/tr(X*X'))*X*sqrt(m-1)
+        #E = x_m .+ sqrt(tr(X_old*X_old')/tr(X*X'))*X*sqrt(m-1)
+        E = x_m .+ X_old*sqrt(m-1)
+        #println(tr(X_old*X_old')/tr(X*X'))
     end
 
     if calc_score
@@ -67,7 +69,7 @@ function ensrf(; E::AbstractMatrix{float_type}, R::AbstractMatrix{float_type},
     D, m = size(E)
 
     x_m = mean(E, dims=2)
-    H_l = H_linear(x_m)
+    #H_l = H_linear(x_m)
     A = E .- x_m
 
     if localization === nothing
@@ -75,16 +77,26 @@ function ensrf(; E::AbstractMatrix{float_type}, R::AbstractMatrix{float_type},
     else
         P = inflation*localization.*(A*A')/(m - 1)
     end
+    
+    HE = hcat([H(E[:, i]) for i=1:m]...)
+    y_m = H(x_m)#mean(HE, dims=2)
+    Y = HE .- y_m
 
-    K = P*H_l'*inv(H_l*P*H_l' + R)
-    x_m .+= K*(y - H_l*x_m)
+    x_m = mean(E, dims=2)
+    X = E .- x_m
+    PH = (X*Y')/(m-1)
+    HPH = (Y*Y')/(m-1)
+
+    K = PH*inv(HPH + R)
+    x_m .+= K*(y - y_m)
 
     if calc_score
         score_estimator.fit(Matrix{Float32}(E)')
         score = score_estimator.compute_gradients(Matrix{Float32}(E)').numpy()'
     end
 
-    E = x_m .+ real((I + P*H_l'*R_inv*H_l)^(-1/2))*A
+    #E = x_m .+ real((I + P*H_l'*R_inv*H_l)^(-1/2))*A
+    E = x_m .+ A
 
     if calc_score
         E += Δt*K*R*K'*score

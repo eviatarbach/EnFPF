@@ -58,8 +58,9 @@ xarray = pyimport("xarray")
 function make_observations(; ensemble, model_true::Function,
                              H_true, H_hidden=nothing, integrator::Function, R::AbstractMatrix{float_type},
                              Δt::float_type, window::int_type, n_cycles::int_type, outfreq::int_type,
-                             p::int_type, ens_size, p_hidden=0) where {float_type<:AbstractFloat, int_type<:Integer}
+                             p::int_type, ens_size, p_hidden=0, D=D) where {float_type<:AbstractFloat, int_type<:Integer}
     trues = Array{float_type}(undef, n_cycles, p)
+    ensembles = Array{float_type}(undef, n_cycles, D, ens_size)
     if p_hidden > 0
         trues_hidden = Array{float_type}(undef, n_cycles, p_hidden)
     end
@@ -74,6 +75,7 @@ function make_observations(; ensemble, model_true::Function,
         Threads.@threads for i=1:ens_size
             E[:, i] = integrator(model_true, E[:, i], t, t + window*outfreq*Δt, Δt)
         end
+        ensembles[cycle, :, :] = E
 
         HE = [H_true(E[:, i]) for i=1:ens_size]
         trues[cycle, :] = mean(HE)
@@ -93,9 +95,9 @@ function make_observations(; ensemble, model_true::Function,
     end
 
     if p_hidden > 0
-        return trues, trues_hidden, observations, mean(covariances)
+        return trues, ensembles, trues_hidden, observations, mean(covariances)
     else
-        return trues, observations, mean(covariances)
+        return trues, ensembles, observations, mean(covariances)
     end
 end
 
@@ -108,7 +110,11 @@ function da_cycles(; ensemble::AbstractMatrix{float_type},
                      assimilate_obs::Bool=true,
                      save_P_hist::Bool=false,
                      prev_analyses::Union{AbstractArray{float_type}, Nothing}=nothing,
-                     leads::int_type=1, t0=0.0, calc_score=true) where {float_type<:AbstractFloat, int_type<:Integer}
+                     leads::int_type=1, t0=0.0, calc_score=true, inflation=1.0, max_cycle=nothing) where {float_type<:AbstractFloat, int_type<:Integer}
+    if max_cycle === nothing
+        max_cycle = n_cycles
+    end
+    save_fcsts = false
     R_inv = inv(R)
 
     if save_P_hist
@@ -117,7 +123,11 @@ function da_cycles(; ensemble::AbstractMatrix{float_type},
         P_hist = nothing
     end
 
-    forecasts = Array{float_type}(undef, n_cycles, model_size, ens_size)
+    if save_fcsts
+        forecasts = Array{float_type}(undef, window*n_cycles, model_size, ens_size)
+    else
+        forecasts = nothing
+    end
     analyses = Array{float_type}(undef, n_cycles, model_size, ens_size)
 
     t = t0
@@ -138,12 +148,10 @@ function da_cycles(; ensemble::AbstractMatrix{float_type},
 
         x_m = mean(E, dims=2)
 
-        forecasts[cycle, :, :] = E
-
-        if assimilate_obs & (mod(cycle, leads) == 0)
+        if assimilate_obs & (mod(cycle, leads) == 0) & (cycle <= max_cycle)
             E_a = E
             for i=1:1
-                E_a = da_method(E=E_a, R=R, R_inv=R_inv, H=H, H_linear=H_linear, y=y, localization=localization, calc_score=calc_score, Δt=Δt)
+                E_a = da_method(E=E_a, R=R, R_inv=R_inv, H=H, H_linear=H_linear, y=y, localization=localization, calc_score=calc_score, Δt=Δt, inflation=inflation)
             end
         else
             E_a = E
@@ -159,6 +167,9 @@ function da_cycles(; ensemble::AbstractMatrix{float_type},
 
         Threads.@threads for i=1:ens_size
             integration = integrator(model, E[:, i], t, t + window*outfreq*Δt, Δt, inplace=false)
+            if save_fcsts
+                forecasts[(cycle-1)*window+1:cycle*window, :, i] = integration
+            end
             E[:, i] = integration[end, :]
         end
 

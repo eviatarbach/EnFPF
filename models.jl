@@ -1,5 +1,7 @@
 module Models
 
+using FFTW, Statistics
+
 function System(func_generic, params)
    func = (t, u)->func_generic(t, u, params)
    return func
@@ -82,5 +84,48 @@ function lorenz96_twoscale_func(t, u, p)
 end
 
 lorenz96_twoscale = System(lorenz96_twoscale_func, Dict("F" => 8, "b" => 10, "c" => 10, "h" => 1.0, "N" => 40, "n" => 10))
+
+Q=64; N=22; h=0.25; M=16
+#Precompute various ETDRK4 scalar quantities
+k = 2π/N*(0.0:Q-1)
+L = (k.^2 - k.^4) # Fourier Multiples
+E =  exp.(h*L)
+E2 = exp.(h*L/2)
+M = 16 # No. of points for complex means
+r = exp.(im*π*((1:M) .-0.5)/M)
+LR = h*L*ones(M)' + ones(Q)*r'
+QQ = h*real.(mean((exp.(LR/2).-1)./LR, dims=2))[:]
+f1 = h*real(mean((-4 .-LR+exp.(LR).*(4 .-3*LR+ LR.^2))./LR.^3,dims=2))[:]
+f2 = h*real(mean((2 .+LR+exp.(LR).*(-2 .+LR))./LR.^3,dims=2))[:]
+f3 = h*real(mean((-4 .-3*LR-LR.^2+exp.(LR).*(4 .-LR))./LR.^3,dims=2))[:]
+g = -0.5im*k
+
+function KuramotoSivashinsky(u, tmax;h=h)
+   # From https://github.com/JuliaDynamics/TimeseriesPrediction.jl/blob/master/test/ks_solver.jl
+   u_real = u[1:Q]
+   u_imag = u[Q+1:end]
+   u = complex.(u_real, u_imag)
+    nmax = round(Int,tmax/h)
+    #v = fft(u)
+    tt = 0.0:h:tmax
+    uu = zeros(2*Q, length(tt)-1)
+
+    for n = 1:nmax
+         v = fft(u)
+                            Nv = g .* fft(real(ifft(v)).^2) #.+ cc
+          a  =  E2.*v .+ QQ.*Nv
+                           Na = g .* fft(real(ifft(a)).^2) #.+ cc
+         b  =  E2.*v .+ QQ.*Na
+                            Nb = g.* fft(real(ifft(b)).^2) #.+ cc
+         c  =  E2.*ifft(a) .+ QQ.*(2Nb.-Nv)
+        Nc = g.* fft(real(ifft(c)).^2) #.+ cc
+         v =  E.*v + Nv.*f1 + 2*(Na+Nb).*f2 + Nc.*f3
+
+         u = ifft(v)
+         uu[1:Q, n] = real(u)
+         uu[Q+1:end, n] = imag(u)
+    end
+    return uu
+end
 
 end
