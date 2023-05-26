@@ -65,7 +65,7 @@ function ensrf(; E::AbstractMatrix{float_type}, R::AbstractMatrix{float_type},
                  R_inv::AbstractMatrix{float_type},
                  inflation::float_type=1.0, H, H_linear,
                  y::AbstractVector{float_type},
-                 localization=nothing, calc_score=true, Δt) where {float_type<:AbstractFloat}
+                 localization=nothing, calc_score=true, Δt, model=nothing) where {float_type<:AbstractFloat}
     D, m = size(E)
 
     x_m = mean(E, dims=2)
@@ -79,7 +79,7 @@ function ensrf(; E::AbstractMatrix{float_type}, R::AbstractMatrix{float_type},
     end
     
     HE = hcat([H(E[:, i]) for i=1:m]...)
-    y_m = H(x_m)#mean(HE, dims=2)
+    y_m = mean(HE, dims=2)#H(x_m)#mean(HE, dims=2)
     Y = HE .- y_m
 
     x_m = mean(E, dims=2)
@@ -88,15 +88,62 @@ function ensrf(; E::AbstractMatrix{float_type}, R::AbstractMatrix{float_type},
     HPH = (Y*Y')/(m-1)
 
     K = PH*inv(HPH + R)
-    x_m .+= K*(y - y_m)
+    E .+= K*(y - y_m)
+    #x_m .+= K*(y - y_m)
 
-    if calc_score
-        score_estimator.fit(Matrix{Float32}(E)')
-        score = score_estimator.compute_gradients(Matrix{Float32}(E)').numpy()'
-    end
+    # if calc_score
+    #     score_estimator.fit(Matrix{Float32}(E)')
+    #     score = score_estimator.compute_gradients(Matrix{Float32}(E)').numpy()'
+    # end
 
     #E = x_m .+ real((I + P*H_l'*R_inv*H_l)^(-1/2))*A
-    E = x_m .+ A
+    #E = x_m .+ A
+
+    if calc_score
+        E += -K*R*K'*inv(X*X'/(m-1))*X
+        #E += K*R*K'*score
+    end
+
+    return E
+end
+
+function ensrf_cont(; E::AbstractMatrix{float_type}, R::AbstractMatrix{float_type},
+                 R_inv::AbstractMatrix{float_type},
+                 inflation::float_type=1.0, H, H_linear,
+                 y::AbstractVector{float_type},
+                 localization=nothing, calc_score=true, Δt, model) where {float_type<:AbstractFloat}
+    D, m = size(E)
+    err_dist = MvNormal(R*Δt)
+
+    x_m = mean(E, dims=2)
+    #H_l = H_linear(x_m)
+    
+    HE = hcat([H(E[:, i]) for i=1:m]...)
+    y_m = mean(HE, dims=2)#H(x_m)
+    Y = HE .- y_m
+
+    x_m = mean(E, dims=2)
+    X = E .- x_m
+    PH = (X*Y')/(m-1)
+    HPH = (Y*Y')/(m-1)
+
+    dz = Δt*y + rand(err_dist)
+
+    K = PH*inv(R + Δt*HPH)
+    #K = PH*R_inv
+
+    #errs = rand(err_dist, m)
+
+    for i=1:m
+        E[:, i] += Δt*model(0.0, E[:, i])
+        E[:, i] += -1/2*K*(Δt*(H(E[:, i]) + y_m) - 2*dz)
+        #E[:, i] += K*(dz + rand(err_dist) - Δt*H(E[:, i]))
+        #E[:, i] += K*(dz + rand(err_dist) - Δt*y_m)
+    end
+
+    if calc_score
+        score = -pinv(X*X'/(m-1))*X
+    end
 
     if calc_score
         E += Δt*K*R*K'*score

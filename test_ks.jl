@@ -68,7 +68,7 @@ true_states, ensembles, observations, covariance = DA.make_observations(ensemble
                                            p=p, ens_size=ens_obs_size, D=D)
 
 R = cov(observations[200:end, :], dims=1) + 1e-8*I(p)
-R = diagm(0=>diag(R))
+R = diagm(0=>diag(R))/10
 obs_err_dist = MvNormal(R)
 m = mean(observations[200:end, 1:64], dims=1)[:]
 v = mean(observations[200:end, 64+1:end], dims=1)[:]

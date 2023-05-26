@@ -38,7 +38,7 @@ t0 = 0.0
 outfreq = 1
 transient = 2000
 x = integrator(model, x0, t0, transient*outfreq*Δt, Δt, inplace=false)
-max_cycle = 30
+max_cycle = Inf
 
 #H(v) = diag(v*v')#[v[1] > quantile(x[:, 1], 0.5), v[2] > quantile(x[:, 2], 0.5),
         #v[3] > quantile(x[:, 3], 0.5)]
@@ -70,7 +70,7 @@ true_states, ensembles, observations, covariance = DA.make_observations(ensemble
                                            p=p, ens_size=ens_obs_size, D=D)
 
 R = cov(observations[200:end, :], dims=1) + 1e-8*I(p)
-R = diagm(0=>diag(R))
+R = diagm(0=>diag(R))/20
 obs_err_dist = MvNormal(R)
 m = mean(observations[200:end, 1:40], dims=1)[:]
 #v = mean(observations[200:end, 41:80], dims=1)[:]
@@ -87,7 +87,7 @@ da_info = DA.da_cycles(ensemble=ensemble, model=model, H=H, H_linear=H_linear, o
                        window=window, n_cycles=n_cycles, outfreq=outfreq,
                        model_size=model_size, R=R,
                        assimilate_obs=assimilate_obs,
-                       leads=leads, save_P_hist=save_P_hist, calc_score=false, max_cycle=max_cycle)
+                       leads=leads, save_P_hist=save_P_hist, calc_score=true, max_cycle=max_cycle)
 
 #info = DA.compute_stats(da_info=da_info, trues=true_states)
 

@@ -30,6 +30,50 @@ function rk4(f::Function, y0::Array{Float64, 1}, t0::Float64,
     end
 end
 
+function euler(f::Function, y0::Array{Float64, 1}, t0::Float64,
+             t1::Float64, h::Float64; inplace::Bool=true)
+    y = y0
+    n = round(Int, (t1 - t0)/h)
+    t = t0
+    if ~inplace
+        hist = zeros(n, length(y0))
+    end
+    for i in 1:n
+        y = y + h * f(t, y)
+        if ~inplace
+            hist[i, :] = y
+        end
+        t = t0 + i*h
+    end
+    if ~inplace
+        return hist
+    else
+        return y
+    end
+end
+
+function rk_stochastic(f::Function, y0::Array{Float64, 1}, t0::Float64,
+             t1::Float64, h::Float64; inplace::Bool=true)
+    y = y0
+    n = round(Int, (t1 - t0)/h)
+    t = t0
+    if ~inplace
+        hist = zeros(n, length(y0))
+    end
+    for i in 1:n
+        y = y + h * f(t, y)
+        if ~inplace
+            hist[i, :] = y
+        end
+        t = t0 + i*h
+    end
+    if ~inplace
+        return hist
+    else
+        return y
+    end
+end
+
 function ks(f::Function, y0::Array{Float64, 1}, t0::Float64,
             t1::Float64, h::Float64; inplace::Bool=true)
     y = y0

@@ -18,6 +18,19 @@ end
 
 lorenz63 = System(lorenz63_func, Dict("σ" => 10, "β" => 8/3, "ρ" => 28))
 
+function lorenz63_na_func(t, u, p)
+   "From Daron and Stainforth, 2015"
+   du = similar(u)
+   Ψ = p["A"](1/3*sin(2*pi*p["f"]*t) + 1/3*sin(sqrt(3)*p["f"]*t) + 1/3*sin(sqrt(17)*p["f"]*t))
+   du[1] = p["σ"]*(u[2]-u[1])
+   du[2] = u[1]*((p["ρ"] + Ψ)-u[3]) - u[2]
+   du[3] = u[1]*u[2] - p["β"]*u[3]
+
+   return copy(du)
+end
+
+lorenz63_na = System(lorenz63_na_func, Dict("σ" => 10, "β" => 8/3, "ρ" => 28, "f" => 1, "A" => 3))
+
 function lorenz96_func(t, u, p)
    N = p["N"]
 
