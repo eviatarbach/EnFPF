@@ -9,7 +9,6 @@ using Random
 using Distributions
 using ProgressMeter
 using PyCall
-using BlockArrays
 
 mutable struct DA_Info
     forecasts
