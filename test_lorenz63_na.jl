@@ -4,31 +4,22 @@ using Random
 
 using Distributions
 
-include("da.jl")
-import .DA
+import EnFPF.DA
+import EnFPF.DA_methods
+import EnFPF.Models
+import EnFPF.Integrators
 
-include("da_methods.jl")
-import .DA_methods
-
-include("models.jl")
-import .Models
-
-include("integrators.jl")
-import .Integrators
-
-Random.seed!(1)
-
-moving_average(vs,n) = [sum(@view vs[i:(i+n-1)])/n for i in 1:(length(vs)-(n-1))]
+Random.seed!(10)
 
 D = 3
-model = Models.lorenz63
+model = Models.lorenz63_na
 
-p = 3
+p = 9
 ens_size = 100
 ens_obs_size = 100
 model_size = D
 integrator = Integrators.rk4
-da_method = DA_methods.etkf
+da_method = DA_methods.ensrf
 
 x0 = randn(D)
 t0 = 0.0
@@ -48,9 +39,9 @@ save_P_hist = true
 leads = 1
 x0 = x[end, :]
 
-window = 4
+window = 1
 inflation = 1.0
-max_cycle = 30
+max_cycle = Inf
 
 ensemble = x0 .+ 0.25*randn(D, ens_size)
 ensemble_obs = x[1000, :] .+ 0.25*randn(D, ens_obs_size)
@@ -62,22 +53,34 @@ for i=1:3
     end
 end
 
-H(vd) = vcat([vd[1:1].^i for i=1:3]...)
+H(vd) = vcat([vd.^i for i=1:3]...)
 #H(vd) = [vd; (vd*vd')[mask]]
 
 #observations = hcat([cov(x) .+ rand(MvNormal(R), ens_size) for i=1:n_cycles]...)'
 
-true_states, ensembles, observations, covariance = DA.make_observations(ensemble=ensemble_obs, model_true=model, H_true=H, integrator=integrator,
-                                           R=R, Δt=Δt, window=window, n_cycles=n_cycles, outfreq=outfreq,
-                                           p=p, ens_size=ens_obs_size, D=D)
+long_n_cycles = 10000
 
-R = cov(observations[200:end, :], dims=1) + 1e-8*I(p)
+true_states, ensembles, observations, covariance = DA.make_observations(ensemble=ensemble_obs, model_true=model, H_true=H, integrator=integrator,
+                                           R=R, Δt=Δt, window=window, n_cycles=long_n_cycles, outfreq=outfreq,
+                                           p=p, ens_size=ens_obs_size, D=D, t0=0.0)
+
+t0 = (long_n_cycles-n_cycles)*window*Δt
+
+R = cov(observations, dims=1)/5 + 1e-8*I(p)
 obs_err_dist = MvNormal(R)
-m = mean(observations[200:end, 1:3], dims=1)[:]
-#v = mean(observations[200:end, 4:6], dims=1)[:]
+
+true_states, ensembles, observations, covariance = DA.make_observations(ensemble=ensemble_obs, model_true=model, H_true=H, integrator=integrator,
+                                           R=R, Δt=Δt, window=window, n_cycles=long_n_cycles, outfreq=outfreq,
+                                           p=p, ens_size=ens_obs_size, D=D, t0=0.0)
+
+observations = observations[end-n_cycles+1:end, :]
+true_states = true_states[end-n_cycles+1:end, :]
+ensembles = ensembles[end-n_cycles+1:end, :, :]
+#m = mean(observations[:, 1:3], dims=1)[:]
+#v = mean(observations[:, 4:6], dims=1)[:]
 #s = mean(observations[200:end, 7:9], dims=1)[:]
 
-observations = (mean(observations[200:end, :], dims=1)[:] .+ rand(obs_err_dist, n_cycles))'
+#observations = (mean(observations[:, :], dims=1)[:] .+ rand(obs_err_dist, n_cycles))'
 
 # true_states, observations, covariance = DA.make_observations(ensemble=ensemble_obs, model_true=model, H_true=vd->[(vd).^2; vd], integrator=integrator,
 #                                            R=R, Δt=Δt, window=window, n_cycles=n_cycles, outfreq=outfreq,
@@ -90,8 +93,8 @@ da_info = DA.da_cycles(ensemble=ensemble, model=model, H=H, observations=observa
                        window=window, n_cycles=n_cycles, outfreq=outfreq,
                        model_size=model_size, R=R,
                        assimilate_obs=assimilate_obs,
-                       leads=leads, save_P_hist=save_P_hist, calc_score=true, inflation=inflation,
-                       max_cycle=max_cycle)
+                       leads=leads, save_P_hist=save_P_hist, calc_score=false, inflation=inflation,
+                       max_cycle=max_cycle, t0=t0)
 
 #info = DA.compute_stats(da_info=da_info, trues=true_states)
 filtered = hcat([mean([H(da_info.analyses[i, :, j]) for j=1:ens_size]) for i=1:n_cycles]...)'
@@ -104,7 +107,7 @@ noda_info = DA.da_cycles(ensemble=ensemble, model=model, H=H, observations=obser
                        window=window, n_cycles=n_cycles, outfreq=outfreq,
                        model_size=model_size, R=R,
                        assimilate_obs=false,
-                       leads=leads, save_P_hist=save_P_hist)
+                       leads=leads, save_P_hist=save_P_hist, t0=t0)
 
 nfiltered = hcat([mean([H(noda_info.analyses[i, :, j]) for j=1:ens_size]) for i=1:n_cycles]...)'
 

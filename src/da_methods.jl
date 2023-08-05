@@ -6,10 +6,6 @@ using Statistics
 using LinearAlgebra
 
 using Distributions
-using PyCall
-push!(pyimport("sys")."path", "kscore")
-kscore = pyimport("kscore")
-score_estimator = kscore.estimators.NuMethod(lam=0.1, kernel=kscore.kernels.CurlFreeIMQ())
 
 """
 Ensemble transform Kalman filter (ETKF)
@@ -65,18 +61,11 @@ function ensrf(; E::AbstractMatrix{float_type}, R::AbstractMatrix{float_type},
                  R_inv::AbstractMatrix{float_type},
                  inflation::float_type=1.0, H, H_linear,
                  y::AbstractVector{float_type},
-                 localization=nothing, calc_score=true, Δt, model=nothing) where {float_type<:AbstractFloat}
+                 calc_score="gaussian", Δt, model=nothing) where {float_type<:AbstractFloat}
     D, m = size(E)
 
     x_m = mean(E, dims=2)
     #H_l = H_linear(x_m)
-    A = E .- x_m
-
-    if localization === nothing
-        P = inflation*A*A'/(m - 1)
-    else
-        P = inflation*localization.*(A*A')/(m - 1)
-    end
     
     HE = hcat([H(E[:, i]) for i=1:m]...)
     y_m = mean(HE, dims=2)#H(x_m)#mean(HE, dims=2)
@@ -84,25 +73,31 @@ function ensrf(; E::AbstractMatrix{float_type}, R::AbstractMatrix{float_type},
 
     x_m = mean(E, dims=2)
     X = E .- x_m
-    PH = (X*Y')/(m-1)
-    HPH = (Y*Y')/(m-1)
 
     K = PH*inv(HPH + R)
-    E .+= K*(y - y_m)
+    E .+= K*(y + rand(MvNormal(R)) - y_m)
+
+    if calc_score == "gaussian"
+        E += -K*R*K'*inv((X*X')/(m-1))*X
+    elseif calc_score[1] == "kernel"
+        score_estimator = calc_score[2]
+        score_estimator.fit(Matrix{Float32}(E)')
+        score = score_estimator.compute_gradients(Matrix{Float32}(E)').numpy()'
+        E += K*R*K'*score
+    end
     #x_m .+= K*(y - y_m)
 
     # if calc_score
+    #     push!(pyimport("sys")."path", "kscore")
+
+    #     kscore = pyimport("kscore")
+    #     score_estimator = kscore.estimators.NuMethod(lam=1.0, kernel=kscore.kernels.CurlFreeIMQ())
     #     score_estimator.fit(Matrix{Float32}(E)')
     #     score = score_estimator.compute_gradients(Matrix{Float32}(E)').numpy()'
     # end
 
     #E = x_m .+ real((I + P*H_l'*R_inv*H_l)^(-1/2))*A
     #E = x_m .+ A
-
-    if calc_score
-        E += -K*R*K'*inv(X*X'/(m-1))*X
-        #E += K*R*K'*score
-    end
 
     return E
 end

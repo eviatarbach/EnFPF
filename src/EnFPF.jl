@@ -12,4 +12,7 @@ using .Models
 include("integrators.jl")
 using .Integrators
 
+include("metrics.jl")
+using .Metrics
+
 end

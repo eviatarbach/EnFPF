@@ -19,9 +19,12 @@ end
 lorenz63 = System(lorenz63_func, Dict("σ" => 10, "β" => 8/3, "ρ" => 28))
 
 function lorenz63_na_func(t, u, p)
-   "From Daron and Stainforth, 2015"
+   """
+   From Daron, J. D., & Stainforth, D. A. (2015). On quantifying the climate of the nonautonomous Lorenz-63 model.
+   Chaos, 25(4), 043103. https://doi.org/10.1063/1.4916789
+   """
    du = similar(u)
-   Ψ = p["A"](1/3*sin(2*pi*p["f"]*t) + 1/3*sin(sqrt(3)*p["f"]*t) + 1/3*sin(sqrt(17)*p["f"]*t))
+   Ψ = p["A"]*(1/3*sin(2*pi*p["f"]*t) + 1/3*sin(sqrt(3)*p["f"]*t) + 1/3*sin(sqrt(17)*p["f"]*t))
    du[1] = p["σ"]*(u[2]-u[1])
    du[2] = u[1]*((p["ρ"] + Ψ)-u[3]) - u[2]
    du[3] = u[1]*u[2] - p["β"]*u[3]
@@ -114,7 +117,26 @@ f3 = h*real(mean((-4 .-3*LR-LR.^2+exp.(LR).*(4 .-LR))./LR.^3,dims=2))[:]
 g = -0.5im*k
 
 function KuramotoSivashinsky(u, tmax;h=h)
-   # From https://github.com/JuliaDynamics/TimeseriesPrediction.jl/blob/master/test/ks_solver.jl
+   """
+   From https://github.com/JuliaDynamics/TimeseriesPrediction.jl/blob/master/test/ks_solver.jl,
+   based on exponential differencing fourth-order Runge–Kutta from
+   Kassam, A.-K., & Trefethen, L. N. (2005). Fourth-Order Time-Stepping for Stiff PDEs.
+   SIAM Journal on Scientific Computing, 26(4), 1214–1233. https://doi.org/10.1137/S1064827502410633
+   """
+   v = zeros(ComplexF64, Q)
+   T = plan_fft(v)
+   Ti = plan_ifft(v)
+   T! = plan_fft!(v)
+   Ti! = plan_ifft!(v)
+
+   a = Complex.(zeros(Q))
+   b = Complex.(zeros(Q))
+   c = Complex.(zeros(Q))
+   Nv = Complex.(zeros(Q))
+   Na = Complex.(zeros(Q))
+   Nb = Complex.(zeros(Q))
+   Nc = Complex.(zeros(Q))
+
    u_real = u[1:Q]
    u_imag = u[Q+1:end]
    u = complex.(u_real, u_imag)
@@ -125,14 +147,14 @@ function KuramotoSivashinsky(u, tmax;h=h)
 
     for n = 1:nmax
          v = fft(u)
-                            Nv = g .* fft(real(ifft(v)).^2) #.+ cc
-          a  =  E2.*v .+ QQ.*Nv
-                           Na = g .* fft(real(ifft(a)).^2) #.+ cc
-         b  =  E2.*v .+ QQ.*Na
-                            Nb = g.* fft(real(ifft(b)).^2) #.+ cc
-         c  =  E2.*ifft(a) .+ QQ.*(2Nb.-Nv)
-        Nc = g.* fft(real(ifft(c)).^2) #.+ cc
-         v =  E.*v + Nv.*f1 + 2*(Na+Nb).*f2 + Nc.*f3
+         Nv .= g .* (T*real(Ti*v).^2) #.+ cc
+         @.  a  =  E2*v + QQ*Nv
+                            Na .= g .* (T!*real(Ti!*a).^2) #.+ cc
+         @. b  =  E2*v + QQ*Na
+                             Nb .= g.* (T!*real(Ti!*b).^2) #.+ cc
+         @. c  =  E2*a + QQ*(2Nb-Nv)
+         Nc .= g.* (T!*real(Ti!*c).^2) #.+ cc
+         @. v =  E*v + Nv*f1 + 2*(Na+Nb)*f2 + Nc*f3
 
          u = ifft(v)
          uu[1:Q, n] = real(u)

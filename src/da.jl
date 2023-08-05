@@ -71,7 +71,7 @@ function make_observations(; ensemble, model_true::Function,
 
     for cycle=1:n_cycles
         E = copy(ensemble)
-        Threads.@threads for i=1:ens_size
+        for i=1:ens_size
             E[:, i] = integrator(model_true, E[:, i], t, t + window*outfreq*Δt, Δt)
         end
         ensembles[cycle, :, :] = E
@@ -163,13 +163,13 @@ function da_cycles(; ensemble::AbstractMatrix{float_type},
         end
 
         #if (!assimilate_obs) | (assimilate_obs & mod(cycle, leads) != 0)
-            Threads.@threads for i=1:ens_size
-                integration = integrator(model, E[:, i], t, t + window*outfreq*Δt, Δt, inplace=false)
-                if save_fcsts
-                    forecasts[(cycle-1)*window+1:cycle*window, :, i] = integration
-                end
-                E[:, i] = integration[end, :]
+        for i=1:ens_size
+            integration = integrator(model, E[:, i], t, t + window*outfreq*Δt, Δt, inplace=false)
+            if save_fcsts
+                forecasts[(cycle-1)*window+1:cycle*window, :, i] = integration
             end
+            E[:, i] = integration[end, :]
+        end
         #end
 
         ensemble = E

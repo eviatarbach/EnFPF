@@ -4,26 +4,17 @@ using Random
 
 using Distributions
 
-include("da.jl")
-import .DA
-
-include("da_methods.jl")
-import .DA_methods
-
-include("models.jl")
-import .Models
-
-include("integrators.jl")
-import .Integrators
+import EnFPF.DA
+import EnFPF.DA_methods
+import EnFPF.Models
+import EnFPF.Integrators
+import EnFPF.Metrics
 
 Random.seed!(10)
-
-moving_average(vs,n) = [sum(@view vs[i:(i+n-1)])/n for i in 1:(length(vs)-(n-1))]
 
 D = 3
 model = Models.lorenz63
 
-p = 9
 ens_size = 100
 ens_obs_size = 100
 model_size = D
@@ -37,7 +28,21 @@ outfreq = 1
 transient = 2000
 x = integrator(model, x0, t0, transient*outfreq*Δt, Δt, inplace=false)
 
-n_cycles = 400
+n_cycles = 1500
+
+mask = zeros(Bool, 3, 3)
+for i=1:3
+    for j=1:i
+        mask[i, j] = true
+    end
+end
+
+#H(vd) = [vd; (vd*vd')[mask]]
+
+n_moments = 2
+p = 6
+#p = 3*n_moments
+H(vd) = vcat([vd[1:3].^i for i=1:n_moments]...)
 
 #vec_cov = reshape(var([vec(x[i, :]*x[i, :]') for i=1:transient])/ens_size, 3, 3)
 R = diagm(0=>1e-16*ones(p))#Symmetric(diagm(0.1*diag(vec_cov)))#Symmetric(diagm([0.05, 0.05, 0.05])
@@ -50,20 +55,11 @@ x0 = x[end, :]
 
 window = 4
 inflation = 1.0
-max_cycle = 20
+max_cycle = 30
 
 ensemble = x0 .+ 0.25*randn(D, ens_size)
+ensemble_da = copy(ensemble)
 ensemble_obs = x[1000, :] .+ 0.25*randn(D, ens_obs_size)
-
-mask = zeros(Bool, 3, 3)
-for i=1:3
-    for j=1:i
-        mask[i, j] = true
-    end
-end
-
-H(vd) = vcat([vd.^i for i=1:3]...)
-#H(vd) = [vd; (vd*vd')[mask]]
 
 #observations = hcat([cov(x) .+ rand(MvNormal(R), ens_size) for i=1:n_cycles]...)'
 
@@ -71,13 +67,14 @@ true_states, ensembles, observations, covariance = DA.make_observations(ensemble
                                            R=R, Δt=Δt, window=window, n_cycles=n_cycles, outfreq=outfreq,
                                            p=p, ens_size=ens_obs_size, D=D)
 
-R = cov(observations[200:end, :], dims=1)/5 + 1e-8*I(p)
+R = cov(observations[500:end, :], dims=1)/5 + 1e-8*I(p)
 obs_err_dist = MvNormal(R)
-m = mean(observations[200:end, 1:3], dims=1)[:]
-v = mean(observations[200:end, 4:6], dims=1)[:]
+# m = mean(observations[200:end, 1:3], dims=1)[:]
+# v = mean(observations[200:end, 4:6], dims=1)[:]
 #s = mean(observations[200:end, 7:9], dims=1)[:]
 
-observations = (mean(observations[200:end, :], dims=1)[:] .+ rand(obs_err_dist, n_cycles))'
+observations = (mean(observations[500:end, :], dims=1)[:] .+ rand(obs_err_dist, n_cycles))'
+#observations = observations .+ rand(obs_err_dist, n_cycles)'
 
 # true_states, observations, covariance = DA.make_observations(ensemble=ensemble_obs, model_true=model, H_true=vd->[(vd).^2; vd], integrator=integrator,
 #                                            R=R, Δt=Δt, window=window, n_cycles=n_cycles, outfreq=outfreq,
@@ -99,6 +96,8 @@ filtered = hcat([mean([H(da_info.analyses[i, :, j]) for j=1:ens_size]) for i=1:n
 # mean([std([H(da_info.analyses[i, :, j]) for j=1:ens_size]) for i=1:n_cycles])
 
 ensemble = x0 .+ 0.25*randn(D, ens_size)
+ensemble_noda = copy(ensemble)
+
 noda_info = DA.da_cycles(ensemble=ensemble, model=model, H=H, observations=observations, integrator=integrator,
                        da_method=da_method, localization=nothing, ens_size=ens_size, Δt=Δt,
                        window=window, n_cycles=n_cycles, outfreq=outfreq,
@@ -107,6 +106,11 @@ noda_info = DA.da_cycles(ensemble=ensemble, model=model, H=H, observations=obser
                        leads=leads, save_P_hist=save_P_hist)
 
 nfiltered = hcat([mean([H(noda_info.analyses[i, :, j]) for j=1:ens_size]) for i=1:n_cycles]...)'
+
+invariant = reshape(permutedims(ensembles[end-14:end, :, :], [2,3,1]), D, :)
+
+dists = [Metrics.wasserstein(noda_info.analyses[i, :, :], invariant, ens_size, 1500) for i=1:300]
+dists_da = [Metrics.wasserstein(da_info.analyses[i, :, :], invariant, ens_size, 1500) for i=1:300]
 
 # function wasserstein(ens1, ens2)
 #     M = ot.dist(ens1',ens2', metric="euclidean")

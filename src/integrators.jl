@@ -76,6 +76,7 @@ end
 
 function ks(f::Function, y0::Array{Float64, 1}, t0::Float64,
             t1::Float64, h::Float64; inplace::Bool=true)
+    """Dummy integrator for Kuramoto–Sivashinsky"""
     y = y0
     n = round(Int, (t1 - t0)/h)
     t = t0
