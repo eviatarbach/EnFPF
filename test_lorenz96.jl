@@ -3,7 +3,6 @@ using LinearAlgebra
 using Random
 
 using Distributions
-using BlockArrays
 
 import EnFPF.DA
 import EnFPF.DA_methods
