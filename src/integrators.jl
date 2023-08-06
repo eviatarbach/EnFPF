@@ -5,7 +5,7 @@ export rk4, ks
 using LinearAlgebra
 
 function rk4(f::Function, y0::Array{Float64,1}, t0::Float64,
-    t1::Float64, h::Float64; inplace::Bool=true)
+             t1::Float64, h::Float64; inplace::Bool=true)
     y = y0
     n = round(Int, (t1 - t0) / h)
     t = t0
@@ -31,7 +31,7 @@ function rk4(f::Function, y0::Array{Float64,1}, t0::Float64,
 end
 
 function ks(f::Function, y0::Array{Float64,1}, t0::Float64,
-    t1::Float64, h::Float64; inplace::Bool=true)
+            t1::Float64, h::Float64; inplace::Bool=true)
     """Dummy integrator for Kuramoto–Sivashinsky"""
     y = y0
     n = round(Int, (t1 - t0) / h)
@@ -39,7 +39,7 @@ function ks(f::Function, y0::Array{Float64,1}, t0::Float64,
     if ~inplace
         hist = zeros(n, length(y0))
     end
-    hist = f(y0, t1 - t0, h=h)'
+    hist = f(y0, t1 - t0; h=h)'
     if ~inplace
         return hist
     else

@@ -8,15 +8,16 @@ using LinearAlgebra
 using Distributions
 
 function enfpf(; E::AbstractMatrix{float_type}, Γ::AbstractMatrix{float_type}, h,
-    y::AbstractVector{float_type}, calc_score="gaussian") where {float_type<:AbstractFloat}
+               y::AbstractVector{float_type},
+               calc_score="gaussian") where {float_type<:AbstractFloat}
     D, m = size(E)
 
-    x_m = mean(E, dims=2)
+    x_m = mean(E; dims=2)
 
-    hE = hcat([h(E[:, i]) for i = 1:m]...)
+    hE = hcat([h(E[:, i]) for i in 1:m]...)
 
-    x_m = mean(E, dims=2)
-    y_m = mean(hE, dims=2)
+    x_m = mean(E; dims=2)
+    y_m = mean(hE; dims=2)
 
     X = E .- x_m
     Y = hE .- y_m
