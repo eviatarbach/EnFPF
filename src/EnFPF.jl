@@ -1,10 +1,10 @@
 module EnFPF
 
-include("da.jl")
-using .DA
+include("filtering.jl")
+using .Filtering
 
-include("da_methods.jl")
-using .DA_methods
+include("filters.jl")
+using .Filters
 
 include("models.jl")
 using .Models

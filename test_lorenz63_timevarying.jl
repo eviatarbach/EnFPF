@@ -4,8 +4,8 @@ using Random
 
 using Distributions
 
-import EnFPF.Filtering
-import EnFPF.DA_methods
+import EnFPF.DA
+import EnFPF.Filters
 import EnFPF.Models
 import EnFPF.Integrators
 import EnFPF.Metrics
@@ -15,7 +15,7 @@ Random.seed!(10)
 D = 3
 model = Models.lorenz63
 
-ens_size = 100
+ens_size = 10
 ens_obs_size = 100
 model_size = D
 integrator = Integrators.rk4
@@ -57,7 +57,7 @@ true_states, ensembles, observations, covariance = DA.make_observations(ensemble
 R = cov(observations[500:end, :], dims=1)/5 + 1e-8*I(p)
 obs_err_dist = MvNormal(R)
 
-observations = (mean(observations[500:end, :], dims=1)[:] .+ rand(obs_err_dist, n_cycles))'
+observations = observations .+ rand(obs_err_dist, n_cycles)'
 
 da_info = DA.da_cycles(ensemble=ensemble, model=model, H=H, observations=observations, integrator=integrator,
                        da_method=da_method, ens_size=ens_size, Δt=Δt,
@@ -80,8 +80,3 @@ noda_info = DA.da_cycles(ensemble=ensemble, model=model, H=H, observations=obser
                        leads=leads, save_P_hist=save_P_hist)
 
 nfiltered = hcat([mean([H(noda_info.analyses[i, :, j]) for j=1:ens_size]) for i=1:n_cycles]...)'
-
-invariant = reshape(permutedims(ensembles[end-14:end, :, :], [2,3,1]), D, :)
-
-dists = [Metrics.wasserstein(noda_info.analyses[i, :, :], invariant, ens_size, 1500) for i=1:300]
-dists_da = [Metrics.wasserstein(da_info.analyses[i, :, :], invariant, ens_size, 1500) for i=1:300]
