@@ -72,16 +72,14 @@ function filtering_cycles(; ensemble::AbstractMatrix{float_type},
     if max_cycle === nothing
         max_cycle = n_cycles
     end
-    Γ_inv = inv(Γ)
 
     analyses = Array{float_type}(undef, n_cycles, model_size, ens_size)
 
     t = t0
 
+    E = ensemble
     @showprogress for cycle in 1:n_cycles
         y = observations[cycle, :]
-
-        E = ensemble
 
         if assimilate_obs & (cycle <= max_cycle)
             E_a = filter_method(; E=E, Γ=Γ, h=h, y=y, calc_score=calc_score)
@@ -92,11 +90,9 @@ function filtering_cycles(; ensemble::AbstractMatrix{float_type},
         analyses[cycle, :, :] = E_a
 
         for i in 1:ens_size
-            integration = integrator(model, E[:, i], t, t + window * Δt, Δt; inplace=false)
+            integration = integrator(model, E_a[:, i], t, t + window * Δt, Δt; inplace=false)
             E[:, i] = integration[end, :]
         end
-
-        ensemble = E
 
         t += window * Δt
     end

@@ -1,6 +1,6 @@
 module Filters
 
-export ensrf
+export enfpf
 
 using Statistics
 using LinearAlgebra
@@ -9,7 +9,7 @@ using Distributions
 
 function enfpf(; E::AbstractMatrix{float_type}, Γ::AbstractMatrix{float_type}, h,
                y::AbstractVector{float_type},
-               calc_score="gaussian") where {float_type<:AbstractFloat}
+               calc_score=false) where {float_type<:AbstractFloat}
     D, m = size(E)
 
     x_m = mean(E; dims=2)
