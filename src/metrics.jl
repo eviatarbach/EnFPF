@@ -2,17 +2,18 @@ module Metrics
 
 export wasserstein
 
-using PyCall
+using PythonCall
 
-const ot = PyNULL()
+const ot = PythonCall.pynew()
 
 function __init__()
-    return copy!(ot, pyimport("ot"))
+    return PythonCall.pycopy!(ot, pyimport("ot"))
 end
 
 function wasserstein(ens1, ens2, ens_size1, ens_size2)
-    M = ot.dist(ens1', ens2'; metric="euclidean")
-    return ot.emd2(ones(ens_size1) / ens_size1, ones(ens_size2) / ens_size2, M)
+    M = ot.dist(Py(ens1').to_numpy(), Py(ens2').to_numpy(); metric="euclidean")
+	return pyconvert(Float64, ot.emd2(Py(ones(ens_size1) / ens_size1).to_numpy(),
+							          Py(ones(ens_size2) / ens_size2).to_numpy(), M))
 end
 
 end
