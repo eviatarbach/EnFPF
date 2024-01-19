@@ -7,12 +7,11 @@ using LinearAlgebra
 
 using Distributions
 
+"""The ensemble Fokker—Planck filter (EnFPF)"""
 function enfpf(; E::AbstractMatrix{float_type}, Γ::AbstractMatrix{float_type}, h,
                y::AbstractVector{float_type},
                calc_score=false) where {float_type<:AbstractFloat}
     D, m = size(E)
-
-    x_m = mean(E; dims=2)
 
     hE = hcat([h(E[:, i]) for i in 1:m]...)
 
@@ -37,6 +36,30 @@ function enfpf(; E::AbstractMatrix{float_type}, Γ::AbstractMatrix{float_type}, 
         score = score_estimator.compute_gradients(Matrix{Float32}(E)').numpy()'
         E += K * Γ * K' * score
     end
+
+    return E
+end
+
+"""A square-root formulation of the EnFPF"""
+function senfpf(; E::AbstractMatrix{float_type}, Γ::AbstractMatrix{float_type}, h,
+               y::AbstractVector{float_type},
+               calc_score=false) where {float_type<:AbstractFloat}
+    D, m = size(E)
+
+    hE = hcat([h(E[:, i]) for i in 1:m]...)
+
+    v_m = mean(E; dims=2)
+    y_m = mean(hE; dims=2)
+
+    V = (E .- v_m)/sqrt(m-1)
+    Y = (hE .- y_m)/sqrt(m-1)
+
+    Γ_inv = inv(Γ)
+
+    W = Γ_inv - Γ_inv*Y*(I + Y'*Γ_inv*Y)^-1*Y'*Γ_inv
+    K = V*Y'*W
+
+    E .+= K * (y + rand(MvNormal(Γ)) - y_m)
 
     return E
 end
